@@ -59,6 +59,7 @@ main .wrap{padding-block:16px 48px;display:grid;gap:16px}
 .meta{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;color:var(--muted)}
 .meta .code{font-family:var(--mono);font-size:13px}
 .meta .code b{color:var(--ink);font-size:15px}
+.notice{background:color-mix(in srgb,var(--ok) 16%,var(--surface));color:var(--ink);border:1px solid var(--ok);border-radius:12px;padding:12px 14px;font-weight:700;font-size:16px}
 .flag{justify-self:start;font-size:13px;font-weight:700;padding:4px 10px;border-radius:6px}
 .flag.warn{background:var(--warn-bg);color:var(--warn)}
 .flag.bad{background:var(--bad-bg);color:var(--bad)}
@@ -157,6 +158,7 @@ details>summary{cursor:pointer;font-weight:500;padding:6px 0}
       <button id="modeDest">배송지별</button>
       <button id="modeProd">상품별 합산</button>
     </div>
+    <div class="notice" id="notice" hidden></div>
     <div id="cardHost"></div>
     <div class="ctrls">
       <button class="btn big" id="btnNext">완료 · 다음</button>
@@ -225,6 +227,9 @@ function render(){
   $("earLog").textContent="마지막 버튼: "+(st.event||"없음");
   if(st.speechProblem) $("earHelp").textContent=st.speechProblem;
   const dbl=(st.settings.dbl==="next")?"완료하고 다음 상품 안내":"방금 안내 다시 듣기"; $("dblDesc").textContent=dbl;
+  // completion notice
+  const nt=$("notice"), age=+st.noticeAge||1e9;
+  if(st.notice&&age<8000){ nt.textContent=st.notice; nt.hidden=false; clearTimeout(window._nt); window._nt=setTimeout(()=>{ nt.hidden=true; },8000-age); } else nt.hidden=true;
   // card
   const s=steps.find(x=>x.id===st.cur), host=$("cardHost"); host.replaceChildren();
   if(!steps.length) host.append(h("div",{class:"card done-card"},h("strong",null,"피킹지가 비어 있습니다"),h("p",{class:"note"},"‘피킹지’ 탭에서 데이터를 넣어 주세요.")));

@@ -297,20 +297,49 @@ public final class Store {
         return head + name + ", " + s.qty + "박스." + tail + warn;
     }
 
-    private void announce(boolean force) {
+    private void announce(boolean force) { announce(force, null); }
+
+    private void announce(boolean force, String prefix) {
         String text;
         synchronized (this) { text = buildAnnouncement(force); }
-        Speaker.get(ctx).say(text);
+        Speaker.get(ctx).say(prefix == null ? text : prefix + " " + text);
+    }
+
+    private String notice = "";
+    private long noticeAt = 0;
+
+    /** When the step just finished closes its group (a destination or a product), the words to say. */
+    private String[] groupDone(List<Step> steps, Step s) {
+        boolean prod = "product".equals(mode);
+        Set<String> left = new HashSet<>();
+        for (Step x : steps) {
+            String key = prod ? x.code : x.dest;
+            boolean same = prod ? key.equals(s.code) : key.equals(s.dest);
+            if (same && !done.contains(x.id)) return null;
+            if (!done.contains(x.id)) left.add(key);
+        }
+        int n = left.size();
+        String name = info(s.code).optString("name");
+        String speech = prod ? speakName(name) + " 피킹 완료." : shortDest(s.dest) + " 배송지 완료.";
+        String screen = "✓ " + (prod ? name + " 피킹 완료" : s.dest + " 배송지 완료");
+        if (n > 0) {
+            speech += prod ? " 남은 상품 " + n + "개." : " 남은 배송지 " + n + "곳.";
+            screen += prod ? " · 남은 상품 " + n + "개" : " · 남은 배송지 " + n + "곳";
+        }
+        return new String[]{speech, screen};
     }
 
     // ---------- actions ----------
     public void next() {
+        String prefix = null;
         synchronized (this) {
             List<Step> steps = steps();
             ensureCur(steps);
             int i = indexOf(steps, cur);
             if (i >= 0) {
                 done.add(steps.get(i).id);
+                String[] g = groupDone(steps, steps.get(i));
+                if (g != null) { prefix = g[0]; notice = g[1]; noticeAt = System.currentTimeMillis(); }
                 int j = -1;
                 for (int k = i + 1; k < steps.size(); k++) if (!done.contains(steps.get(k).id)) { j = k; break; }
                 if (j < 0) for (int k = 0; k < steps.size(); k++) if (!done.contains(steps.get(k).id)) { j = k; break; }
@@ -318,7 +347,7 @@ public final class Store {
                 save();
             }
         }
-        announce(false);
+        announce(false, prefix);
         fire();
     }
 
@@ -531,6 +560,8 @@ public final class Store {
             o.put("catalog", catalog);
             o.put("settings", settings);
             o.put("event", lastEvent);
+            o.put("notice", notice);
+            o.put("noticeAge", System.currentTimeMillis() - noticeAt);
             o.put("session", sessionOn);
             String p = Speaker.get(ctx).problem();
             o.put("speechProblem", p == null ? "" : p);
