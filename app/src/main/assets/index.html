@@ -143,6 +143,7 @@ details>summary{cursor:pointer;font-weight:500;padding:6px 0}
 
 <main>
   <section id="pane-pick"><div class="wrap">
+    <div class="notice" id="updBanner" hidden style="display:flex;gap:10px;align-items:center;justify-content:space-between"><span>새 버전이 나왔습니다</span><button class="btn" id="btnUpdBanner" style="padding:8px 12px">받기</button></div>
     <div class="ear" id="ear">
       <div class="status"><span class="dot"></span><span id="earStatus">안내 꺼짐</span></div>
       <button class="btn big" id="btnEar">안내 시작</button>
@@ -190,6 +191,7 @@ details>summary{cursor:pointer;font-weight:500;padding:6px 0}
       <select id="optDbl" style="padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink)"><option value="repeat">다시 듣기</option><option value="next">다음 (한 번과 같음)</option></select></div>
     <div class="sline"><span>소리 테스트<small>한국어 음성이 나오는지 확인</small></span><button class="btn" id="btnTest">들어보기</button></div>
     <div class="sline"><span>배터리 설정 열기<small>앱 정보 → 배터리 → ‘제한 없음’으로 두면 화면이 꺼져도 끊기지 않습니다</small></span><button class="btn" id="btnBattery">열기</button></div>
+    <div class="sline"><span>업데이트 확인<small id="updState">지금 버전 확인 중…</small></span><button class="btn" id="btnUpd">확인</button></div>
     <h3>기록 정리</h3>
     <div class="confirm" id="resetBox">
       <button class="btn" id="btnResetDone">완료 표시 모두 지우기</button>
@@ -321,6 +323,17 @@ $("btnResetDone").onclick=()=>askReset("done","완료 표시를 모두 지울까
 $("btnClearWave").onclick=()=>askReset("wave","피킹지와 완료 표시를 모두 지울까요?");
 $("btnNo").onclick=()=>{ $("resetBox").hidden=false; $("resetConfirm").hidden=true; };
 $("btnYes").onclick=()=>{ if(resetKind==="done") A.resetDone(); else A.clearWave(); $("btnNo").onclick(); };
+let updLatest=0;
+window.onUpdate=r=>{
+  const cur=+r.current||0, lat=+r.latest||0, el=$("updState"), b=$("btnUpd");
+  if(!r.ok){ el.textContent=`지금 버전 1.0.${cur} · 인터넷 연결을 확인하고 다시 눌러 주세요`; b.textContent="확인"; updLatest=0; return; }
+  if(lat>cur){ updLatest=lat; el.textContent=`새 버전 1.0.${lat}이 있습니다 (지금 1.0.${cur})`; b.textContent="받기"; $("updBanner").hidden=false; }
+  else { updLatest=0; el.textContent=`최신 버전입니다 (1.0.${cur})`; b.textContent="확인"; $("updBanner").hidden=true; }
+};
+$("btnUpd").onclick=()=>{ if(updLatest){ A.openDownload(); return; } $("updState").textContent="확인하는 중…"; A.checkUpdate(); };
+$("btnUpdBanner").onclick=()=>A.openDownload();
+try{ $("updState").textContent=`지금 버전 ${A.version()}`; }catch(e){}
+A.checkUpdate();
 load(); render();
 })();
 </script>

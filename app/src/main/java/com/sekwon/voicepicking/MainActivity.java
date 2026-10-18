@@ -16,6 +16,14 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
+import org.json.JSONObject;
+
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+
 public class MainActivity extends Activity implements Store.Listener {
     private WebView web;
     private Store store;
@@ -71,6 +79,56 @@ public class MainActivity extends Activity implements Store.Listener {
         startForegroundService(i);
     }
 
+    private static final String RELEASE_API = "https://api.github.com/repos/sekwon216-hash/voice-picking/releases/latest";
+    static final String APK_URL = "https://github.com/sekwon216-hash/voice-picking/releases/latest/download/voice-picking.apk";
+
+    private long currentVersion() {
+        try {
+            android.content.pm.PackageInfo pi = getPackageManager().getPackageInfo(getPackageName(), 0);
+            return Build.VERSION.SDK_INT >= 28 ? pi.getLongVersionCode() : pi.versionCode;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    /** Asks GitHub for the newest build and hands the answer to the page. */
+    private void checkUpdate() {
+        new Thread(() -> {
+            JSONObject r = new JSONObject();
+            try {
+                r.put("current", currentVersion());
+                HttpURLConnection c = (HttpURLConnection) new URL(RELEASE_API).openConnection();
+                c.setConnectTimeout(8000);
+                c.setReadTimeout(8000);
+                c.setRequestProperty("Accept", "application/vnd.github+json");
+                c.setRequestProperty("User-Agent", "voice-picking-app");
+                int code = c.getResponseCode();
+                if (code != 200) throw new Exception("http " + code);
+                StringBuilder sb = new StringBuilder();
+                try (BufferedReader in = new BufferedReader(new InputStreamReader(c.getInputStream(), StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = in.readLine()) != null) sb.append(line);
+                }
+                JSONObject rel = new JSONObject(sb.toString());
+                String tag = rel.optString("tag_name", "");
+                long latest = 0;
+                try { latest = Long.parseLong(tag.replaceAll("\\D", "")); } catch (Exception ignored) { }
+                r.put("latest", latest);
+                r.put("ok", true);
+            } catch (Exception e) {
+                try { r.put("ok", false); } catch (Exception ignored) { }
+            }
+            String js = "window.onUpdate&&window.onUpdate(" + r.toString() + ")";
+            if (alive && web != null) web.post(() -> { if (alive && web != null) web.evaluateJavascript(js, null); });
+        }).start();
+    }
+
+    private void openDownload() {
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(APK_URL)));
+        } catch (Exception ignored) { }
+    }
+
     private void stopSession() {
         startService(new Intent(this, PickService.class).setAction(PickService.ACTION_STOP));
     }
@@ -100,6 +158,10 @@ public class MainActivity extends Activity implements Store.Listener {
             CharSequence t = c.getItemAt(0).coerceToText(MainActivity.this);
             return t == null ? "" : t.toString();
         }
+
+        @JavascriptInterface public void checkUpdate() { MainActivity.this.checkUpdate(); }
+        @JavascriptInterface public void openDownload() { runOnUiThread(MainActivity.this::openDownload); }
+        @JavascriptInterface public String version() { return "1.0." + currentVersion(); }
 
         @JavascriptInterface public void batterySettings() {
             runOnUiThread(() -> {
