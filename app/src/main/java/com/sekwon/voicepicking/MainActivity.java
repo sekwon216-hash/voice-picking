@@ -12,6 +12,8 @@ import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.webkit.JavascriptInterface;
+import android.webkit.ValueCallback;
+import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -28,6 +30,25 @@ public class MainActivity extends Activity implements Store.Listener {
     private WebView web;
     private Store store;
     private boolean alive = false;
+    private ValueCallback<Uri[]> fileCallback;
+    private static final int FILE_REQ = 42;
+
+    @Override
+    protected void onActivityResult(int req, int res, Intent data) {
+        super.onActivityResult(req, res, data);
+        if (req != FILE_REQ || fileCallback == null) return;
+        Uri[] out = null;
+        if (res == RESULT_OK && data != null) {
+            if (data.getClipData() != null) {
+                out = new Uri[data.getClipData().getItemCount()];
+                for (int k = 0; k < out.length; k++) out[k] = data.getClipData().getItemAt(k).getUri();
+            } else if (data.getData() != null) {
+                out = new Uri[]{data.getData()};
+            }
+        }
+        fileCallback.onReceiveValue(out);
+        fileCallback = null;
+    }
 
     @Override
     protected void onCreate(Bundle b) {
@@ -41,6 +62,27 @@ public class MainActivity extends Activity implements Store.Listener {
         ws.setDomStorageEnabled(true);
         ws.setTextZoom(100);
         web.setWebViewClient(new WebViewClient());
+        web.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onShowFileChooser(WebView v, ValueCallback<Uri[]> cb, FileChooserParams params) {
+                if (fileCallback != null) fileCallback.onReceiveValue(null);
+                fileCallback = cb;
+                Intent i = new Intent(Intent.ACTION_GET_CONTENT);
+                i.addCategory(Intent.CATEGORY_OPENABLE);
+                i.setType("*/*");
+                i.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        "application/vnd.ms-excel", "text/csv", "text/comma-separated-values",
+                        "application/octet-stream"});
+                try {
+                    startActivityForResult(Intent.createChooser(i, "피킹지 엑셀 선택"), FILE_REQ);
+                } catch (Exception e) {
+                    fileCallback = null;
+                    return false;
+                }
+                return true;
+            }
+        });
         web.addJavascriptInterface(new Bridge(), "Android");
         setContentView(web);
         web.loadUrl("file:///android_asset/index.html");
@@ -133,6 +175,10 @@ public class MainActivity extends Activity implements Store.Listener {
         startService(new Intent(this, PickService.class).setAction(PickService.ACTION_STOP));
     }
 
+    private void pauseSession() {
+        startService(new Intent(this, PickService.class).setAction(PickService.ACTION_PAUSE));
+    }
+
     private class Bridge {
         @JavascriptInterface public String state() { return store.stateJson(); }
         @JavascriptInterface public void next() { store.next(); }
@@ -149,6 +195,8 @@ public class MainActivity extends Activity implements Store.Listener {
         @JavascriptInterface public void test() { Speaker.get(MainActivity.this).say("소리 테스트입니다. 이 말이 들리면 음성 안내는 정상입니다."); }
         @JavascriptInterface public void start() { runOnUiThread(MainActivity.this::startSession); }
         @JavascriptInterface public void stop() { runOnUiThread(MainActivity.this::stopSession); }
+        @JavascriptInterface public void pause() { runOnUiThread(MainActivity.this::pauseSession); }
+        @JavascriptInterface public boolean restore() { return store.restoreBackup(); }
 
         @JavascriptInterface public String paste() {
             ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);

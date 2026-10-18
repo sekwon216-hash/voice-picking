@@ -38,6 +38,7 @@ public class PickService extends Service implements Store.Listener {
     public static final String ACTION_PREV = "prev";
     public static final String ACTION_REPEAT = "repeat";
     public static final String ACTION_STOP = "stop";
+    public static final String ACTION_PAUSE = "pause";
 
     private static final String CHANNEL = "picking";
     private static final int NOTE_ID = 7;
@@ -158,6 +159,11 @@ public class PickService extends Service implements Store.Listener {
             stopSelf();
             return START_NOT_STICKY;
         }
+        if (ACTION_PAUSE.equals(a)) {
+            Speaker.get(this).say("작업을 일시중단합니다. 지금 위치는 저장됐습니다.");
+            stopSelf();
+            return START_NOT_STICKY;
+        }
         if (a != null && !ACTION_START.equals(a)) {
             store.setEvent("알림창 버튼");
             handle(a);
@@ -215,7 +221,8 @@ public class PickService extends Service implements Store.Listener {
                 .setVisibility(Notification.VISIBILITY_PUBLIC)
                 .addAction(new Notification.Action.Builder(Icon.createWithResource(this, R.drawable.ic_prev), "이전", servicePI(ACTION_PREV, 1)).build())
                 .addAction(new Notification.Action.Builder(Icon.createWithResource(this, R.drawable.ic_replay), "다시", servicePI(ACTION_REPEAT, 2)).build())
-                .addAction(new Notification.Action.Builder(Icon.createWithResource(this, R.drawable.ic_next), "완료·다음", servicePI(ACTION_NEXT, 3)).build());
+                .addAction(new Notification.Action.Builder(Icon.createWithResource(this, R.drawable.ic_next), "완료·다음", servicePI(ACTION_NEXT, 3)).build())
+                .addAction(new Notification.Action.Builder(Icon.createWithResource(this, R.drawable.ic_pause), "일시중단", servicePI(ACTION_PAUSE, 4)).build());
         Notification.MediaStyle style = new Notification.MediaStyle().setShowActionsInCompactView(0, 1, 2);
         if (session != null) style.setMediaSession(session.getSessionToken());
         b.setStyle(style);
@@ -235,7 +242,6 @@ public class PickService extends Service implements Store.Listener {
         store.removeListener(this);
         store.setSession(false);
         store.setEvent("");
-        Speaker.get(this).stop();
         if (session != null) { session.setActive(false); session.release(); session = null; }
         if (track != null) { try { track.stop(); } catch (Exception ignored) { } track.release(); track = null; }
         if (audioManager != null && focusRequest != null) audioManager.abandonAudioFocusRequest(focusRequest);

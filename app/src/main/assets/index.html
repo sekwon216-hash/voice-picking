@@ -70,6 +70,7 @@ main .wrap{padding-block:16px 48px;display:grid;gap:16px}
 .btn[disabled]{opacity:.45;cursor:default}
 .ear{display:grid;gap:10px;padding:14px;border-radius:12px;border:1px dashed var(--line)}
 .ear.on{border-style:solid;border-color:var(--ok)}
+.btn.big.pause{background:var(--surface);color:var(--ink);border:2px solid var(--accent)}
 .ear p{margin:0;font-size:13px;color:var(--muted)}
 .ear .status{display:flex;align-items:center;gap:8px;font-weight:500;font-size:14px}
 .dot{width:9px;height:9px;border-radius:50%;background:var(--muted)}
@@ -174,10 +175,16 @@ details>summary{cursor:pointer;font-weight:500;padding:6px 0}
   <section id="pane-sheets" hidden><div class="wrap">
     <div class="card import">
       <strong>새 피킹지 넣기</strong>
-      <p class="note">claude.ai의 보이스 피킹 페이지에서 피킹지 사진을 올려 읽힌 뒤 ‘단독 앱용 데이터 복사’를 누르세요. 그다음 여기로 와서 아래 버튼을 누르면 됩니다.</p>
-      <button class="btn big" id="btnPasteReplace">복사한 데이터로 새 웨이브 시작</button>
-      <button class="btn" id="btnPasteAppend">복사한 데이터를 지금 목록에 추가</button>
+      <p class="note">센터에서 받은 엑셀(.xlsx, .xls, .csv)을 바로 고르면 됩니다. 사진은 claude.ai의 보이스 피킹 페이지에서 읽힌 뒤 ‘단독 앱용 데이터 복사’를 누르고, 아래 ‘복사한 데이터 넣기’를 누르세요.</p>
+      <label class="btn big" for="xlIn">엑셀 파일 고르기</label>
+      <input type="file" id="xlIn" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv">
+      <button class="btn" id="btnPaste">복사한 데이터 넣기 (사진으로 읽은 것)</button>
       <div id="importMsg" hidden></div>
+      <div class="confirm" id="importChoice" hidden>
+        <button class="btn" id="btnReplace">새 웨이브로 시작</button>
+        <button class="btn" id="btnAppend">지금 목록에 추가</button>
+        <button class="btn" id="btnDiscard">취소</button>
+      </div>
     </div>
     <p class="note">아래는 현재 들어 있는 내용입니다. 사진과 다른 수량은 바로 고치세요. 0으로 바꾸면 피킹에서 빠집니다. ▲▼로 배송지 순서를 바꿉니다.</p>
     <div id="sheetList" style="display:grid;gap:12px"></div>
@@ -193,6 +200,7 @@ details>summary{cursor:pointer;font-weight:500;padding:6px 0}
     <div class="sline"><span>배터리 설정 열기<small>앱 정보 → 배터리 → ‘제한 없음’으로 두면 화면이 꺼져도 끊기지 않습니다</small></span><button class="btn" id="btnBattery">열기</button></div>
     <div class="sline"><span>업데이트 확인<small id="updState">지금 버전 확인 중…</small></span><button class="btn" id="btnUpd">확인</button></div>
     <h3>기록 정리</h3>
+    <div class="sline"><span>직전 상태로 되돌리기<small id="backupInfo">새 웨이브 시작이나 지우기 전 상태로 돌아갑니다</small></span><button class="btn" id="btnRestore">되돌리기</button></div>
     <div class="confirm" id="resetBox">
       <button class="btn" id="btnResetDone">완료 표시 모두 지우기</button>
       <button class="btn danger" id="btnClearWave">피킹지 전부 비우기</button>
@@ -201,6 +209,7 @@ details>summary{cursor:pointer;font-weight:500;padding:6px 0}
   </div></section>
 </main>
 
+<script src="xlsx.full.min.js"></script>
 <script>
 (() => {
 "use strict";
@@ -224,8 +233,11 @@ function render(){
   // session panel
   $("ear").classList.toggle("on",st.session);
   $("earStatus").textContent=st.session?"안내 켜짐 · 화면을 꺼도 됩니다":"안내 꺼짐";
-  $("btnEar").textContent=st.session?"안내 끄기":"안내 시작";
-  $("btnEar").classList.toggle("big",!st.session);
+  const doneBoxes=dn;
+  $("btnEar").textContent=st.session?"일시중단":(doneBoxes>0&&dn<total?`이어서 시작 (${dn}/${total}박스 완료)`:"안내 시작");
+  $("btnEar").classList.toggle("big",true);
+  $("btnEar").classList.toggle("pause",st.session);
+  const bi=$("backupInfo"); if(bi) bi.textContent=st.backupAt?`${new Date(st.backupAt).toLocaleString("ko-KR",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}에 저장된 상태로 돌아갑니다`:"아직 저장된 직전 상태가 없습니다";
   $("earLog").textContent="마지막 버튼: "+(st.event||"없음");
   if(st.speechProblem) $("earHelp").textContent=st.speechProblem;
   const dbl=(st.settings.dbl==="next")?"완료하고 다음 상품 안내":"방금 안내 다시 듣기"; $("dblDesc").textContent=dbl;
@@ -309,8 +321,103 @@ document.querySelectorAll(".tabs button").forEach(b=>b.onclick=()=>{
 });
 $("modeDest").onclick=()=>A.setMode("dest"); $("modeProd").onclick=()=>A.setMode("product");
 $("btnNext").onclick=()=>A.next(); $("btnPrev").onclick=()=>A.prev(); $("btnRepeat").onclick=()=>A.repeat();
-$("btnEar").onclick=()=>{ if(st.session) A.stop(); else A.start(); };
-$("btnPasteReplace").onclick=()=>doImport(true); $("btnPasteAppend").onclick=()=>doImport(false);
+$("btnEar").onclick=()=>{ if(st.session) A.pause(); else A.start(); };
+$("btnPaste").onclick=()=>{
+  const raw=A.paste();
+  if(!raw||raw.indexOf("{")<0){ showMsg("복사된 데이터가 없습니다. claude.ai 페이지에서 ‘단독 앱용 데이터 복사’를 먼저 눌러 주세요.",true); return; }
+  try{ const d=JSON.parse(raw.slice(raw.indexOf("{"),raw.lastIndexOf("}")+1)); if(!d.wave||!d.catalog) throw 0; offer(raw, summarize(d)); }
+  catch(e){ showMsg("복사된 내용이 보이스 피킹 데이터가 아닙니다.",true); }
+};
+$("xlIn").addEventListener("change",async e=>{
+  const f=e.target.files[0]; e.target.value=""; if(!f) return;
+  showMsg(`‘${f.name}’ 읽는 중…`);
+  try{
+    const r=await readExcel(f);
+    if(!r.ok){ showMsg(r.msg,true); return; }
+    offer(JSON.stringify(r.data), summarize(r.data)+(r.ea?" 수량 칸이 낱개(EA) 기준으로 보입니다. 박스 수가 맞는지 꼭 확인해 주세요.":""));
+  }catch(err){ showMsg("파일을 열지 못했습니다. 엑셀 파일이 맞는지 확인해 주세요.",true); }
+});
+let pendingRaw=null, armed=false, armTimer=null;
+function summarize(d){ const by=(d.wave.dests||[]).map(x=>`${x.name} ${(x.pages||[]).reduce((a,p)=>a+(p.items||[]).reduce((b,i)=>b+(+i.qty||0),0),0)}박스`); return `읽은 내용: ${by.join(", ")}.`; }
+function offer(raw,msg){ pendingRaw=raw; armed=false; $("btnReplace").textContent="새 웨이브로 시작"; showMsg(msg); $("importChoice").hidden=false; }
+$("btnDiscard").onclick=()=>{ pendingRaw=null; $("importChoice").hidden=true; $("importMsg").hidden=true; };
+$("btnAppend").onclick=()=>apply(false);
+$("btnReplace").onclick=()=>{
+  const progress=st.steps.some(x=>done.has(x.id));
+  if(progress&&!armed){ armed=true; $("btnReplace").textContent="한 번 더 누르면 지금 작업을 지우고 시작"; clearTimeout(armTimer); armTimer=setTimeout(()=>{ armed=false; $("btnReplace").textContent="새 웨이브로 시작"; },4000); return; }
+  apply(true);
+};
+function apply(replace){
+  if(!pendingRaw) return;
+  const r=A.importData(pendingRaw,replace); pendingRaw=null; $("importChoice").hidden=true;
+  if(r.startsWith("ERR:")) showMsg(r.slice(4),true); else showMsg(r+(replace?" 이전 작업은 설정 → 직전 상태로 되돌리기로 복구할 수 있습니다.":""));
+}
+$("btnRestore").onclick=()=>{ if(!st.backupAt){ return; } if(st.session){ $("backupInfo").textContent="일시중단한 뒤에 되돌려 주세요"; return; } A.restore(); };
+
+/* ---------- Excel reading (no internet needed) ---------- */
+const H={
+  code:[/바코드|barcode/i,/상품코드|품목코드|제품코드|sku|단품코드/i,/코드/],
+  name:[/상품명|품명|품목명|제품명|상품이름/],
+  qty:[/^(box|박스)(수량)?$|박스수량|box수량|출고box|지시box|피킹box/i,/피킹수량|지시수량|출고수량|오더수량|주문수량|수량/],
+  date:[/소비기한|유통기한|유효기한/,/관리일자|기한/],
+  dest:[/배송지|배송처|납품처|거래처|점포명?|매장명?|센터명|착지|도착지|출고처/],
+  plt:[/plt입수|팔레트입수|파렛트입수/i],
+  box:[/box입수|박스입수|^입수$/i]
+};
+const clean=v=>String(v==null?"":v).replace(/\s/g,"");
+function pick(row,list,used){ for(const re of list){ for(let i=0;i<row.length;i++){ if(used.has(i)) continue; const c=clean(row[i]); if(!c) continue; if(re.test(c)&&!(list===H.qty&&/입수/.test(c))) return i; } } return null; }
+function findLayout(rows){
+  for(let r=0;r<Math.min(rows.length,40);r++){
+    const row=rows[r]||[], used=new Set(), L={headerRow:r};
+    for(const k of ["plt","box","qty","code","name","date","dest"]){ const i=pick(row,H[k],used); L[k]=i; if(i!=null) used.add(i); }
+    if(L.qty!=null&&(L.code!=null||L.name!=null)){ L.ea=/ea|낱개|개수/i.test(clean(row[L.qty]))&&!/box|박스/i.test(clean(row[L.qty])); return L; }
+  }
+  return null;
+}
+function fixedDest(rows,upto){
+  for(let r=0;r<upto;r++){ const row=rows[r]||[]; for(let i=0;i<row.length;i++){ if(/배송지|배송처|납품처|거래처/.test(clean(row[i]))){ for(let j=i+1;j<row.length;j++){ const v=String(row[j]||"").trim(); if(v) return v; } const below=rows[r+1]&&String(rows[r+1][i]||"").trim(); if(below) return below; } } }
+  return null;
+}
+function normDate(v){
+  if(v==null||v==="") return "";
+  if(v instanceof Date&&!isNaN(v)) return `${v.getFullYear()}-${String(v.getMonth()+1).padStart(2,"0")}-${String(v.getDate()).padStart(2,"0")}`;
+  const t=String(v).trim(); let m=t.match(/(\d{4})[-./년\s]+(\d{1,2})[-./월\s]+(\d{1,2})/);
+  if(m) return `${m[1]}-${m[2].padStart(2,"0")}-${m[3].padStart(2,"0")}`;
+  m=t.match(/^(\d{4})(\d{2})(\d{2})$/); if(m) return `${m[1]}-${m[2]}-${m[3]}`;
+  return "";
+}
+const codeStr=v=>typeof v==="number"?String(Math.round(v)):String(v==null?"":v).replace(/\s/g,"").replace(/\.0+$/,"");
+const numOf=v=>{ if(typeof v==="number") return v; const n=parseFloat(String(v==null?"":v).replace(/,/g,"")); return isNaN(n)?null:n; };
+async function readExcel(file){
+  if(!window.XLSX) return {ok:false,msg:"엑셀 읽기 도구를 불러오지 못했습니다. 앱을 다시 열어 주세요."};
+  const wb=XLSX.read(await file.arrayBuffer(),{type:"array",cellDates:true});
+  const fileDest=file.name.replace(/\.[^.]+$/,"");
+  const dests=new Map(), catalog={}; let ea=false, found=false;
+  for(const sn of wb.SheetNames){
+    const raw=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,raw:true,defval:""});
+    const txt=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,raw:false,defval:""});
+    const L=findLayout(raw); if(!L) continue; found=true; if(L.ea) ea=true;
+    const fixed=L.dest==null?(fixedDest(raw,L.headerRow)||(wb.SheetNames.length>1?sn:fileDest)):null;
+    for(let r=L.headerRow+1;r<raw.length;r++){
+      const row=raw[r], tx=txt[r]||[];
+      const name=L.name!=null?String(tx[L.name]||"").trim():"";
+      let code=L.code!=null?codeStr(row[L.code]):"";
+      const qty=numOf(row[L.qty]);
+      if((!name&&!code)||qty==null) continue;
+      if(/합계|소계|총계|total/i.test(name+" "+String(tx[0]||""))) continue;
+      if(!code) code="N"+name;
+      const dest=(L.dest!=null?String(tx[L.dest]||"").trim():"")||fixed||fileDest;
+      const date=L.date!=null?normDate(row[L.date] instanceof Date?row[L.date]:tx[L.date]):"";
+      if(!dests.has(dest)) dests.set(dest,[]);
+      dests.get(dest).push({code,qty:Math.round(qty)});
+      const prev=catalog[code]||{};
+      catalog[code]={name:name||prev.name||code,date:date||prev.date||"",plt:(L.plt!=null?numOf(row[L.plt]):null)||prev.plt||null,box:(L.box!=null?numOf(row[L.box]):null)||prev.box||null};
+    }
+  }
+  if(!found) return {ok:false,msg:"표에서 상품코드·상품명·수량 칸을 찾지 못했습니다. 이 엑셀은 claude.ai 페이지에 올려 주시거나, 파일을 채팅으로 보내 주시면 이 양식도 읽도록 맞춰 드리겠습니다."};
+  if(!dests.size) return {ok:false,msg:"표는 찾았지만 수량이 들어 있는 행이 없습니다."};
+  return {ok:true,ea,data:{v:1,wave:{code:"",dests:[...dests].map(([name,items])=>({name,pages:[{plt:null,items}]}))},catalog}};
+}
 $("rate").oninput=e=>{ $("rateVal").textContent=(+e.target.value).toFixed(1)+"배"; };
 $("rate").onchange=e=>A.setSetting("rate",e.target.value);
 $("optBrand").onchange=e=>A.setSetting("brand",String(e.target.checked));

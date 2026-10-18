@@ -109,7 +109,51 @@ public final class Store {
                 .putString("cur", cur)
                 .putString("mode", mode)
                 .putString("settings", settings.toString())
-                .apply();
+                .commit();
+    }
+
+    // ---------- safety copy before anything that wipes progress ----------
+    private void snapshot() {
+        JSONObject b = new JSONObject();
+        put(b, "wave", wave);
+        put(b, "catalog", catalog);
+        put(b, "done", new JSONArray(done));
+        put(b, "cur", cur == null ? JSONObject.NULL : cur);
+        put(b, "at", System.currentTimeMillis());
+        sp.edit().putString("backup", b.toString()).commit();
+    }
+
+    /** Swaps the current state with the safety copy, so a second tap undoes the undo. */
+    public boolean restoreBackup() {
+        synchronized (this) {
+            String raw = sp.getString("backup", null);
+            if (raw == null) return false;
+            try {
+                JSONObject b = new JSONObject(raw);
+                snapshot();
+                wave = b.getJSONObject("wave");
+                catalog = b.getJSONObject("catalog");
+                done.clear();
+                JSONArray d = b.optJSONArray("done");
+                if (d != null) for (int i = 0; i < d.length(); i++) done.add(d.getString(i));
+                cur = b.isNull("cur") ? null : b.optString("cur", null);
+                lastHeader = null;
+                save();
+            } catch (JSONException e) {
+                return false;
+            }
+        }
+        fire();
+        return true;
+    }
+
+    private long backupAt() {
+        try {
+            String raw = sp.getString("backup", null);
+            return raw == null ? 0 : new JSONObject(raw).optLong("at", 0);
+        } catch (JSONException e) {
+            return 0;
+        }
     }
 
     private static void put(JSONObject o, String k, Object v) {
@@ -389,7 +433,11 @@ public final class Store {
         fire();
     }
 
-    public void startAnnounce() { synchronized (this) { lastHeader = null; } announce(true); }
+    public void startAnnounce() {
+        boolean resume;
+        synchronized (this) { lastHeader = null; resume = !done.isEmpty(); }
+        announce(true, resume ? "이어서 시작합니다." : null);
+    }
 
     public synchronized void setEvent(String e) { lastEvent = e; }
     public synchronized void setSession(boolean on) { sessionOn = on; }
@@ -446,12 +494,13 @@ public final class Store {
     }
 
     public void resetDone() {
-        synchronized (this) { done.clear(); cur = null; lastHeader = null; save(); }
+        synchronized (this) { snapshot(); done.clear(); cur = null; lastHeader = null; save(); }
         fire();
     }
 
     public void clearWave() {
         synchronized (this) {
+            snapshot();
             wave = new JSONObject();
             put(wave, "code", "");
             put(wave, "dests", new JSONArray());
@@ -482,6 +531,7 @@ public final class Store {
                 JSONObject nc = d.optJSONObject("catalog");
                 if (nw == null || nc == null || nw.optJSONArray("dests") == null) return "ERR:보이스 피킹 데이터가 아닙니다.";
                 if (replace) {
+                    snapshot();
                     wave = new JSONObject();
                     put(wave, "code", nw.optString("code", ""));
                     put(wave, "dests", new JSONArray());
@@ -561,6 +611,7 @@ public final class Store {
             o.put("settings", settings);
             o.put("event", lastEvent);
             o.put("notice", notice);
+            o.put("backupAt", backupAt());
             o.put("noticeAge", System.currentTimeMillis() - noticeAt);
             o.put("session", sessionOn);
             String p = Speaker.get(ctx).problem();
