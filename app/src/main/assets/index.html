@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#151B22">
+<title>보이스 피킹</title>
+<style>
+/* Layout: one-hand phone tool — sticky progress header, tabbed body, current pick card dominates the picking screen */
+:root{
+  --bg:#EDF0F3; --surface:#FFFFFF; --sunk:#E2E7EC; --ink:#10161D; --muted:#5A6672; --line:#D0D7DF;
+  --accent:#D9480F; --accent-ink:#FFFFFF; --ok:#2B8A3E; --warn:#A85500; --warn-bg:#FFF1DE; --bad:#C92A2A; --bad-bg:#FFE6E6;
+  --num:"Barlow Condensed","IBM Plex Sans KR",system-ui,sans-serif;
+  --body:"IBM Plex Sans KR",system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0C1015; --surface:#151B22; --sunk:#1C242D; --ink:#EDF1F5; --muted:#93A0AD; --line:#29333D;
+  --accent:#FF6B2C; --accent-ink:#140A04; --ok:#5BD072; --warn:#FFB45C; --warn-bg:#3A2710; --bad:#FF7070; --bad-bg:#3D1717; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0C1015; --surface:#151B22; --sunk:#1C242D; --ink:#EDF1F5; --muted:#93A0AD; --line:#29333D;
+  --accent:#FF6B2C; --accent-ink:#140A04; --ok:#5BD072; --warn:#FFB45C; --warn-bg:#3A2710; --bad:#FF7070; --bad-bg:#3D1717; color-scheme:dark}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0}
+[hidden]{display:none!important}
+textarea{font:inherit}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5;-webkit-tap-highlight-color:transparent}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--surface)}
+.wrap{max-width:560px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);border-bottom:1px solid var(--line)}
+.top .wrap{padding-block:10px 0;display:grid;gap:8px}
+.toprow{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.brand{font-weight:700;font-size:17px;letter-spacing:-.01em}
+.wave{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.prog{display:flex;align-items:center;gap:10px;font-variant-numeric:tabular-nums}
+.bar{flex:1;height:6px;background:var(--sunk);border-radius:3px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);transition:width .25s}
+.prog b{font-family:var(--num);font-size:18px;font-weight:700}
+.prog span{font-size:12px;color:var(--muted)}
+.tabs{display:flex;gap:4px}
+.tabs button{flex:1;padding:10px 0 9px;font-weight:500;color:var(--muted);border-bottom:3px solid transparent}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+main .wrap{padding-block:16px 48px;display:grid;gap:16px}
+.seg{display:grid;grid-template-columns:1fr 1fr;background:var(--sunk);border-radius:10px;padding:4px;gap:4px}
+.seg button{padding:9px 6px;border-radius:7px;font-weight:500;color:var(--muted);font-size:14px}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgb(0 0 0/.12)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;display:grid;gap:10px;min-width:0}
+.desthead{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.dest{font-weight:700;font-size:15px;background:var(--ink);color:var(--bg);padding:3px 10px;border-radius:6px}
+.destcount{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.pname{font-size:clamp(22px,6.4vw,30px);font-weight:700;line-height:1.25;letter-spacing:-.02em;text-wrap:balance;margin:0;word-break:keep-all;overflow-wrap:anywhere}
+.qty{display:flex;align-items:baseline;gap:8px}
+.qty b{font-family:var(--num);font-size:clamp(84px,26vw,120px);line-height:.9;font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums}
+.qty span{font-size:20px;font-weight:700}
+.qty small{margin-left:auto;font-size:13px;color:var(--muted);text-align:right;line-height:1.3}
+.meta{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;color:var(--muted)}
+.meta .code{font-family:var(--mono);font-size:13px}
+.meta .code b{color:var(--ink);font-size:15px}
+.flag{justify-self:start;font-size:13px;font-weight:700;padding:4px 10px;border-radius:6px}
+.flag.warn{background:var(--warn-bg);color:var(--warn)}
+.flag.bad{background:var(--bad-bg);color:var(--bad)}
+.ctrls{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.btn{padding:14px 10px;border-radius:12px;background:var(--surface);border:1px solid var(--line);font-weight:500}
+.btn.big{grid-column:1/-1;padding:20px 10px;font-size:19px;font-weight:700;background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn:active{transform:translateY(1px)}
+.btn[disabled]{opacity:.45;cursor:default}
+.ear{display:grid;gap:10px;padding:14px;border-radius:12px;border:1px dashed var(--line)}
+.ear.on{border-style:solid;border-color:var(--ok)}
+.ear p{margin:0;font-size:13px;color:var(--muted)}
+.ear .status{display:flex;align-items:center;gap:8px;font-weight:500;font-size:14px}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--muted)}
+.ear.on .dot{background:var(--ok);box-shadow:0 0 0 4px color-mix(in srgb,var(--ok) 25%,transparent)}
+.keys{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13px}
+.keys dt{font-weight:700}
+.keys dd{margin:0;color:var(--muted)}
+.log{font-family:var(--mono);font-size:12px;color:var(--muted)}
+h3{font-size:13px;letter-spacing:.06em;color:var(--muted);margin:4px 0 0;font-weight:500}
+.list{display:grid;border:1px solid var(--line);border-radius:12px;background:var(--surface);overflow:hidden}
+.row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;padding:10px 14px;border-top:1px solid var(--line);text-align:left;width:100%;align-items:center}
+.row:first-child{border-top:0}
+.row .n{font-weight:500;overflow-wrap:anywhere}
+.row .s{grid-column:1;font-size:12px;color:var(--muted)}
+.row .q{grid-row:1/3;grid-column:2;font-family:var(--num);font-size:24px;font-weight:700;font-variant-numeric:tabular-nums}
+.row.done{opacity:.45}
+.row.done .n{text-decoration:line-through}
+.row.cur{background:color-mix(in srgb,var(--accent) 10%,var(--surface))}
+.grp{padding:8px 14px;background:var(--sunk);font-size:13px;font-weight:700;display:flex;justify-content:space-between}
+details>summary{cursor:pointer;font-weight:500;padding:6px 0}
+.done-card{text-align:center;padding:30px 18px}
+.done-card b{font-family:var(--num);font-size:56px;color:var(--ok);display:block;line-height:1}
+/* sheets */
+.import{display:grid;gap:10px}
+.import label.btn{text-align:center;display:block;cursor:pointer}
+.import input[type=file]{position:absolute;opacity:0;width:1px;height:1px}
+.note{font-size:13px;color:var(--muted);margin:0}
+.msg{font-size:14px;padding:10px 12px;border-radius:10px;background:var(--sunk)}
+.msg.bad{background:var(--bad-bg);color:var(--bad)}
+.dsec{display:grid;border:1px solid var(--line);border-radius:12px;background:var(--surface);overflow:hidden}
+.dsec header{display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--sunk)}
+.dsec header strong{flex:1;min-width:0}
+.dsec header small{color:var(--muted);font-variant-numeric:tabular-nums}
+.ib{width:34px;height:34px;border-radius:8px;border:1px solid var(--line);background:var(--surface);font-size:14px}
+.erow{display:grid;grid-template-columns:minmax(0,1fr) 72px;gap:10px;align-items:center;padding:8px 12px;border-top:1px solid var(--line)}
+.erow .n{font-size:14px;overflow-wrap:anywhere}
+.erow .s{font-size:12px;color:var(--muted);font-family:var(--mono)}
+.erow input{width:72px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font-family:var(--num);font-size:20px;font-weight:700;text-align:right}
+.pagebrk{padding:4px 12px;font-size:12px;color:var(--muted);border-top:1px solid var(--line);background:var(--bg);font-variant-numeric:tabular-nums}
+/* settings */
+.set{display:grid;gap:14px}
+.sline{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;background:var(--surface);border:1px solid var(--line);border-radius:12px}
+.sline span small{display:block;color:var(--muted);font-size:12px}
+.sline input[type=range]{width:45%}
+.sline input[type=checkbox]{width:22px;height:22px;accent-color:var(--accent)}
+.confirm{display:flex;gap:8px;flex-wrap:wrap}
+#pocket{position:fixed;inset:0;z-index:100;background:#000;color:#4a4a4a;display:flex;flex-direction:column;justify-content:space-between;align-items:center;text-align:center;padding:calc(28px + env(safe-area-inset-top,0px)) 20px calc(28px + env(safe-area-inset-bottom,0px));touch-action:none;user-select:none;-webkit-user-select:none}
+#pocket .pd{font-size:16px}
+#pocket .pn{font-size:24px;font-weight:700;margin-top:6px;word-break:keep-all}
+#pocket .pq{font-family:var(--num);font-size:110px;font-weight:700;line-height:1;margin-top:8px}
+#pocket .ph{font-size:13px;line-height:1.6;color:#3a3a3a}
+#unlock{width:84px;height:84px;border-radius:50%;border:2px solid #333;color:#555;font-size:13px;position:relative;background:#000}
+#unlock svg{position:absolute;inset:-2px;width:88px;height:88px;transform:rotate(-90deg)}
+#unlock circle{fill:none;stroke:#888;stroke-width:3;stroke-dasharray:264;stroke-dashoffset:264}
+.danger{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 40%,var(--line))}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <div class="toprow"><span class="brand">보이스 피킹</span><span class="wave" id="waveCode"></span></div>
+    <div class="prog"><div class="bar"><i id="barFill" style="width:0%"></i></div><b id="progNum">0 / 0</b><span>박스</span></div>
+    <nav class="tabs" role="tablist">
+      <button role="tab" aria-selected="true" data-tab="pick">피킹</button>
+      <button role="tab" aria-selected="false" data-tab="sheets">피킹지</button>
+      <button role="tab" aria-selected="false" data-tab="set">설정</button>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section id="pane-pick"><div class="wrap">
+    <div class="ear" id="ear">
+      <div class="status"><span class="dot"></span><span id="earStatus">안내 꺼짐</span></div>
+      <button class="btn big" id="btnEar">안내 시작</button>
+      <p id="earHelp">시작하면 화면을 꺼도 이어폰 버튼으로 계속 진행됩니다. 음악·유튜브 앱은 먼저 꺼 두세요.</p>
+      <dl class="keys">
+        <dt>한 번 누름</dt><dd>완료하고 다음 상품 안내</dd>
+        <dt>두 번 누름</dt><dd id="dblDesc">방금 안내 다시 듣기</dd>
+        <dt>세 번 누름</dt><dd>이전 상품으로 되돌리기</dd>
+      </dl>
+      <div class="log" id="earLog">마지막 버튼: 없음</div>
+    </div>
+    <div class="seg" role="group" aria-label="피킹 순서">
+      <button id="modeDest">배송지별</button>
+      <button id="modeProd">상품별 합산</button>
+    </div>
+    <div id="cardHost"></div>
+    <div class="ctrls">
+      <button class="btn big" id="btnNext">완료 · 다음</button>
+      <button class="btn" id="btnPrev">↶ 이전으로</button>
+      <button class="btn" id="btnRepeat">다시 듣기</button>
+    </div>
+    <h3>다음 순서</h3>
+    <div class="list" id="upcoming"></div>
+    <details><summary>전체 목록 보기 (눌러서 그 항목으로 이동)</summary><div class="list" id="allList"></div></details>
+  </div></section>
+
+  <section id="pane-sheets" hidden><div class="wrap">
+    <div class="card import">
+      <strong>새 피킹지 넣기</strong>
+      <p class="note">claude.ai의 보이스 피킹 페이지에서 피킹지 사진을 올려 읽힌 뒤 ‘단독 앱용 데이터 복사’를 누르세요. 그다음 여기로 와서 아래 버튼을 누르면 됩니다.</p>
+      <button class="btn big" id="btnPasteReplace">복사한 데이터로 새 웨이브 시작</button>
+      <button class="btn" id="btnPasteAppend">복사한 데이터를 지금 목록에 추가</button>
+      <div id="importMsg" hidden></div>
+    </div>
+    <p class="note">아래는 현재 들어 있는 내용입니다. 사진과 다른 수량은 바로 고치세요. 0으로 바꾸면 피킹에서 빠집니다. ▲▼로 배송지 순서를 바꿉니다.</p>
+    <div id="sheetList" style="display:grid;gap:12px"></div>
+  </div></section>
+
+  <section id="pane-set" hidden><div class="wrap set">
+    <div class="sline"><span>말하기 속도<small id="rateVal">1.1배</small></span><input type="range" id="rate" min="0.8" max="1.8" step="0.1"></div>
+    <div class="sline"><span>브랜드 읽기<small>“득템”, “씨제이” 같은 앞부분을 읽어 줍니다</small></span><input type="checkbox" id="optBrand"></div>
+    <div class="sline"><span>상품코드 끝 4자리 읽기<small>비슷한 상품이 많을 때 확인용</small></span><input type="checkbox" id="optTail"></div>
+    <div class="sline"><span>두 번 누름 동작<small>이어폰 다음곡 신호</small></span>
+      <select id="optDbl" style="padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink)"><option value="repeat">다시 듣기</option><option value="next">다음 (한 번과 같음)</option></select></div>
+    <div class="sline"><span>소리 테스트<small>한국어 음성이 나오는지 확인</small></span><button class="btn" id="btnTest">들어보기</button></div>
+    <div class="sline"><span>배터리 설정 열기<small>앱 정보 → 배터리 → ‘제한 없음’으로 두면 화면이 꺼져도 끊기지 않습니다</small></span><button class="btn" id="btnBattery">열기</button></div>
+    <h3>기록 정리</h3>
+    <div class="confirm" id="resetBox">
+      <button class="btn" id="btnResetDone">완료 표시 모두 지우기</button>
+      <button class="btn danger" id="btnClearWave">피킹지 전부 비우기</button>
+    </div>
+    <div class="confirm" id="resetConfirm" hidden><span id="resetQ" style="align-self:center;font-size:14px"></span><button class="btn danger" id="btnYes">네, 지웁니다</button><button class="btn" id="btnNo">취소</button></div>
+  </div></section>
+</main>
+
+<script>
+(() => {
+"use strict";
+const A = window.Android;
+const $ = id => document.getElementById(id);
+function h(tag, attrs, ...kids){ const el=document.createElement(tag); if(attrs) for(const [k,v] of Object.entries(attrs)){ if(k==="class") el.className=v; else if(k.startsWith("on")) el.addEventListener(k.slice(2),v); else if(v!==false&&v!=null) el.setAttribute(k,v===true?"":v); } for(const k of kids.flat()) if(k!=null&&k!==false) el.append(k.nodeType?k:String(k)); return el; }
+let st = {steps:[],done:[],cur:null,mode:"dest",wave:{dests:[]},catalog:{},settings:{},event:"",session:false,speechProblem:""};
+let done = new Set();
+function load(){ try{ st=JSON.parse(A.state()); done=new Set(st.done); }catch(e){} }
+const info = c => st.catalog[c] || {name:"상품코드 "+c};
+const shortDest = n => n.replace(/^BGF로지스/,"").replace(/^씨제이/,"").replace(/로지텍$/,"") || n;
+function dayDiff(date){ if(!date) return null; const t=new Date(); const today=Date.UTC(t.getFullYear(),t.getMonth(),t.getDate()); const [y,m,d]=String(date).split("-").map(Number); if(!y) return null; return Math.round((Date.UTC(y,m-1,d)-today)/864e5); }
+function flagOf(date){ const n=dayDiff(date); if(n==null) return null; if(n<0) return {cls:"bad",text:"소비기한 지남 · 라벨 확인"}; if(n<=7) return {cls:"warn",text:`소비기한 임박 · D-${n}`}; return null; }
+function linesOf(d){ const m=new Map(); for(const p of d.pages||[]) for(const it of p.items||[]){ const o=m.get(it.code); if(o) o.qty+=it.qty; else m.set(it.code,{code:it.code,qty:it.qty}); } return [...m.values()]; }
+
+function render(){
+  const steps=st.steps, total=steps.reduce((a,b)=>a+b.qty,0), dn=steps.filter(s=>done.has(s.id)).reduce((a,b)=>a+b.qty,0);
+  $("waveCode").textContent=st.wave.code||"";
+  $("progNum").textContent=`${dn} / ${total}`; $("barFill").style.width=total?(dn/total*100)+"%":"0%";
+  $("modeDest").setAttribute("aria-pressed",st.mode==="dest"); $("modeProd").setAttribute("aria-pressed",st.mode==="product");
+  // session panel
+  $("ear").classList.toggle("on",st.session);
+  $("earStatus").textContent=st.session?"안내 켜짐 · 화면을 꺼도 됩니다":"안내 꺼짐";
+  $("btnEar").textContent=st.session?"안내 끄기":"안내 시작";
+  $("btnEar").classList.toggle("big",!st.session);
+  $("earLog").textContent="마지막 버튼: "+(st.event||"없음");
+  if(st.speechProblem) $("earHelp").textContent=st.speechProblem;
+  const dbl=(st.settings.dbl==="next")?"완료하고 다음 상품 안내":"방금 안내 다시 듣기"; $("dblDesc").textContent=dbl;
+  // card
+  const s=steps.find(x=>x.id===st.cur), host=$("cardHost"); host.replaceChildren();
+  if(!steps.length) host.append(h("div",{class:"card done-card"},h("strong",null,"피킹지가 비어 있습니다"),h("p",{class:"note"},"‘피킹지’ 탭에서 데이터를 넣어 주세요.")));
+  else if(!s) host.append(h("div",{class:"card done-card"},h("b",null,total),h("strong",null,"박스 피킹 완료"),h("p",{class:"note"},"되돌리려면 ‘이전으로’를 누르세요.")));
+  else {
+    const it=info(s.code), f=flagOf(it.date);
+    const inDest=steps.filter(x=>x.dest===s.dest), sameProd=steps.filter(x=>x.code===s.code);
+    const restProd=sameProd.filter(x=>!done.has(x.id)).reduce((a,b)=>a+b.qty,0);
+    const right=st.mode==="product"?`${sameProd.findIndex(x=>x.id===s.id)+1}/${sameProd.length} 배송지`:`${inDest.findIndex(x=>x.id===s.id)+1}/${inDest.length} 품목`;
+    host.append(h("div",{class:"card"},
+      h("div",{class:"desthead"},h("span",{class:"dest"},s.dest),h("span",{class:"destcount"},right)),
+      h("h2",{class:"pname"},it.name),
+      h("div",{class:"qty"},h("b",null,s.qty),h("span",null,"박스"),st.mode==="product"?h("small",null,"이 상품 남은 합계",h("br"),h("strong",null,restProd+"박스")):null),
+      f?h("div",{class:"flag "+f.cls},f.text):null,
+      h("div",{class:"meta"},h("span",{class:"code"},s.code.slice(0,-4),h("b",null,s.code.slice(-4))),it.date?h("span",null,"소비기한 "+it.date):null,it.box?h("span",null,`BOX입수 ${it.box} · PLT입수 ${it.plt}`):null)));
+  }
+  $("btnNext").disabled=!s; $("btnPrev").disabled=!steps.length;
+  const up=$("upcoming"); up.replaceChildren();
+  const ci=s?steps.findIndex(x=>x.id===s.id):-1, nxt=[];
+  for(let k=ci+1;k<steps.length&&nxt.length<5;k++) if(!done.has(steps[k].id)) nxt.push(steps[k]);
+  if(!nxt.length) up.append(h("div",{class:"row"},h("span",{class:"s"},s?"이 상품이 마지막입니다":"남은 항목이 없습니다")));
+  nxt.forEach(x=>up.append(rowFor(x,false)));
+  const all=$("allList"); all.replaceChildren(); let g=null;
+  for(const x of steps){ const key=st.mode==="product"?x.code:x.dest;
+    if(key!==g){ g=key; const left=steps.filter(y=>(st.mode==="product"?y.code:y.dest)===key&&!done.has(y.id)).reduce((a,b)=>a+b.qty,0);
+      all.append(h("div",{class:"grp"},h("span",null,st.mode==="product"?info(key).name:key),h("span",null,`남은 ${left}박스`))); }
+    all.append(rowFor(x,true)); }
+  renderSheets(); renderSettings();
+}
+function rowFor(x,clickable){
+  const it=info(x.code), cls="row"+(done.has(x.id)?" done":"")+(x.id===st.cur?" cur":"");
+  const pm=st.mode==="product"&&clickable;
+  const kids=[h("span",{class:"n"},pm?shortDest(x.dest):it.name),h("span",{class:"s"},pm?`…${x.code.slice(-4)}`:(st.mode==="product"?x.dest:`…${x.code.slice(-4)}${it.date?" · "+it.date:""}`)),h("span",{class:"q"},x.qty)];
+  return clickable?h("button",{class:cls,onclick:()=>A.jump(x.id)},...kids):h("div",{class:cls},...kids);
+}
+let editing=false;
+function renderSheets(){
+  if(editing) return;
+  const host=$("sheetList"); host.replaceChildren();
+  (st.wave.dests||[]).forEach((d,di)=>{
+    const boxes=linesOf(d).reduce((a,b)=>a+b.qty,0), plt=(d.pages||[]).reduce((a,p)=>a+(+p.plt||0),0);
+    const sec=h("div",{class:"dsec"},h("header",null,h("strong",null,d.name),h("small",null,`${boxes}박스${plt?` · ${plt.toFixed(2)} PLT`:""}`),
+      h("button",{class:"ib","aria-label":"위로",onclick:()=>A.moveDest(di,-1),disabled:di===0},"▲"),
+      h("button",{class:"ib","aria-label":"아래로",onclick:()=>A.moveDest(di,1),disabled:di===st.wave.dests.length-1},"▼")));
+    (d.pages||[]).forEach((p,pi)=>{
+      sec.append(h("div",{class:"pagebrk"},`${pi+1}페이지${p.plt?` · 예상 적재율 ${p.plt} PLT`:""} · ${(p.items||[]).length}품목`));
+      (p.items||[]).forEach((it,ii)=>{
+        const c=info(it.code);
+        const inp=h("input",{type:"number",inputmode:"numeric",min:"0",value:it.qty,"aria-label":c.name+" 수량"});
+        inp.addEventListener("focus",()=>{ editing=true; });
+        inp.addEventListener("blur",()=>{ editing=false; const v=Math.max(0,parseInt(inp.value,10)||0); if(v!==it.qty) A.setQty(di,pi,ii,v); else render(); });
+        sec.append(h("div",{class:"erow"},h("div",null,h("div",{class:"n"},c.name),h("div",{class:"s"},`${it.code}${c.date?" · "+c.date:""}`)),inp));
+      });
+    });
+    host.append(sec);
+  });
+}
+function renderSettings(){
+  const r=+st.settings.rate||1.1; if(document.activeElement!==$("rate")) $("rate").value=r; $("rateVal").textContent=r.toFixed(1)+"배";
+  $("optBrand").checked=st.settings.brand!==false; $("optTail").checked=!!st.settings.tail; $("optDbl").value=st.settings.dbl||"repeat";
+}
+function showMsg(t,bad){ const m=$("importMsg"); m.hidden=false; m.className="msg"+(bad?" bad":""); m.textContent=t; }
+function doImport(replace){
+  const raw=A.paste();
+  if(!raw||raw.indexOf("{")<0){ showMsg("클립보드에 복사된 데이터가 없습니다. claude.ai 페이지에서 ‘단독 앱용 데이터 복사’를 먼저 눌러 주세요.",true); return; }
+  const r=A.importData(raw,replace);
+  if(r.startsWith("ERR:")) showMsg(r.slice(4),true); else showMsg(r);
+}
+window.onNative=()=>{ load(); render(); };
+
+document.querySelectorAll(".tabs button").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll(".tabs button").forEach(x=>x.setAttribute("aria-selected",x===b));
+  for(const t of ["pick","sheets","set"]) $("pane-"+t).hidden=(b.dataset.tab!==t);
+  window.scrollTo(0,0);
+});
+$("modeDest").onclick=()=>A.setMode("dest"); $("modeProd").onclick=()=>A.setMode("product");
+$("btnNext").onclick=()=>A.next(); $("btnPrev").onclick=()=>A.prev(); $("btnRepeat").onclick=()=>A.repeat();
+$("btnEar").onclick=()=>{ if(st.session) A.stop(); else A.start(); };
+$("btnPasteReplace").onclick=()=>doImport(true); $("btnPasteAppend").onclick=()=>doImport(false);
+$("rate").oninput=e=>{ $("rateVal").textContent=(+e.target.value).toFixed(1)+"배"; };
+$("rate").onchange=e=>A.setSetting("rate",e.target.value);
+$("optBrand").onchange=e=>A.setSetting("brand",String(e.target.checked));
+$("optTail").onchange=e=>A.setSetting("tail",String(e.target.checked));
+$("optDbl").onchange=e=>A.setSetting("dbl",e.target.value);
+$("btnTest").onclick=()=>A.test(); $("btnBattery").onclick=()=>A.batterySettings();
+let resetKind=null;
+function askReset(k,q){ resetKind=k; $("resetQ").textContent=q; $("resetBox").hidden=true; $("resetConfirm").hidden=false; }
+$("btnResetDone").onclick=()=>askReset("done","완료 표시를 모두 지울까요?");
+$("btnClearWave").onclick=()=>askReset("wave","피킹지와 완료 표시를 모두 지울까요?");
+$("btnNo").onclick=()=>{ $("resetBox").hidden=false; $("resetConfirm").hidden=true; };
+$("btnYes").onclick=()=>{ if(resetKind==="done") A.resetDone(); else A.clearWave(); $("btnNo").onclick(); };
+load(); render();
+})();
+</script>
+</body>
+</html>
