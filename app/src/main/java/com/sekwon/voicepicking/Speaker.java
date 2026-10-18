@@ -15,7 +15,7 @@ public final class Speaker {
         return instance;
     }
 
-    private final TextToSpeech tts;
+    private TextToSpeech tts;
     private boolean ready = false;
     private String pending = null;
     private float rate = 1.1f;
